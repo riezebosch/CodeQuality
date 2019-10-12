@@ -1,20 +1,18 @@
 ﻿using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
+using System.Threading.Tasks;
+using AgentClient;
 using AgentStatusFunction.Model;
 using AutoFixture;
-using LogAnalytics.Client;
+using FluentAssertions;
 using Microsoft.Azure.Services.AppAuthentication;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Extensions.Logging;
 using Moq;
 using RichardSzalay.MockHttp;
-using SecurePipelineScan.VstsService;
-using Shouldly;
 using Unmockable;
 using Xunit;
-using Response = SecurePipelineScan.VstsService.Response;
-using Task = System.Threading.Tasks.Task;
 
 namespace AgentStatusFunction.Tests
 {
@@ -26,19 +24,19 @@ namespace AgentStatusFunction.Tests
         {
             // Arrange
             var fixture = new Fixture();
-            IEnumerable<Response.AgentPoolInfo> pools = new[] {
-            new Response.AgentPoolInfo {Name = "Rabo-Build-Azure-Linux", Id = 1},
-            new Response.AgentPoolInfo {Name = "Rabo-Build-Azure-Linux-Canary", Id = 2},
-            new Response.AgentPoolInfo {Name = "Rabo-Build-Azure-Linux-Fallback", Id = 3},
-            new Response.AgentPoolInfo {Name = "Rabo-Build-Azure-Linux-Preview", Id = 4},
-            new Response.AgentPoolInfo {Name = "Rabo-Build-Azure-Windows", Id = 5},
-            new Response.AgentPoolInfo {Name = "Rabo-Build-Azure-Windows-Canary", Id = 6},
-            new Response.AgentPoolInfo {Name = "Rabo-Build-Azure-Windows-Fallback", Id = 7},
-            new Response.AgentPoolInfo {Name = "Rabo-Build-Azure-Windows-Preview", Id = 8},
-            new Response.AgentPoolInfo {Name = "Rabo-Build-Azure-Windows-NOT-OBSERVED", Id = 9}
+            IEnumerable<AgentPoolInfo> pools = new[] {
+            new AgentPoolInfo {Name = "Some-Build-Azure-Linux", Id = 1},
+            new AgentPoolInfo {Name = "Some-Build-Azure-Linux-Canary", Id = 2},
+            new AgentPoolInfo {Name = "Some-Build-Azure-Linux-Fallback", Id = 3},
+            new AgentPoolInfo {Name = "Some-Build-Azure-Linux-Preview", Id = 4},
+            new AgentPoolInfo {Name = "Some-Build-Azure-Windows", Id = 5},
+            new AgentPoolInfo {Name = "Some-Build-Azure-Windows-Canary", Id = 6},
+            new AgentPoolInfo {Name = "Some-Build-Azure-Windows-Fallback", Id = 7},
+            new AgentPoolInfo {Name = "Some-Build-Azure-Windows-Preview", Id = 8},
+            new AgentPoolInfo {Name = "Some-Build-Azure-Windows-NOT-OBSERVED", Id = 9}
         };
 
-            fixture.Customize<Response.AgentStatus>(a => a.With(agent => agent.Status, "online"));
+            fixture.Customize<AgentStatus>(a => a.With(agent => agent.Status, "online"));
 
             var mockHttp = new MockHttpMessageHandler();
 
@@ -50,13 +48,13 @@ namespace AgentStatusFunction.Tests
 
             var logAnalyticsClient = new Mock<ILogAnalyticsClient>();
             var tokenProvider = new Intercept<AzureServiceTokenProvider>();
-            var client = new Mock<IVstsRestClient>();
+            var client = new Mock<IRestClient>();
 
-            client.Setup(x => x.Get(It.IsAny<IEnumerableRequest<Response.AgentPoolInfo>>()))
+            client.Setup(x => x.Get(It.IsAny<IEnumerableRequest<AgentPoolInfo>>()))
                 .Returns(pools);
 
-            client.Setup(x => x.Get(It.IsAny<IEnumerableRequest<Response.AgentStatus>>()))
-                .Returns(fixture.CreateMany<Response.AgentStatus>());
+            client.Setup(x => x.Get(It.IsAny<IEnumerableRequest<AgentStatus>>()))
+                .Returns(fixture.CreateMany<AgentStatus>());
 
 
             // Act
@@ -65,11 +63,11 @@ namespace AgentStatusFunction.Tests
 
             // Assert
             client
-                .Verify(v => v.Get(It.IsAny<IEnumerableRequest<Response.AgentPoolInfo>>()),
+                .Verify(v => v.Get(It.IsAny<IEnumerableRequest<AgentPoolInfo>>()),
                     Times.Exactly(1));
 
             client
-                .Verify(v => v.Get(It.IsAny<IEnumerableRequest<Response.AgentStatus>>()),
+                .Verify(v => v.Get(It.IsAny<IEnumerableRequest<AgentStatus>>()),
                     Times.Exactly(8));
 
             logAnalyticsClient
@@ -83,26 +81,26 @@ namespace AgentStatusFunction.Tests
             //Arrange
             var observedPools = new List<AgentPoolInformation>
             {
-                new AgentPoolInformation() { PoolName = "Rabo-Build-Azure-Linux", ResourceGroupPrefix = "rg-m01-prd-vstslinuxagents-0" },
-                new AgentPoolInformation() { PoolName = "Rabo-Build-Azure-Linux-Canary", ResourceGroupPrefix = "rg-m01-prd-vstslinuxcanary-0" },
-                new AgentPoolInformation() { PoolName = "Rabo-Build-Azure-Linux-Fallback", ResourceGroupPrefix = "rg-m01-prd-vstslinuxfallback-0" },
-                new AgentPoolInformation() { PoolName = "Rabo-Build-Azure-Linux-Preview", ResourceGroupPrefix = "rg-m01-prd-vstslinuxpreview-0" },
-                new AgentPoolInformation() { PoolName = "Rabo-Build-Azure-Windows", ResourceGroupPrefix = "rg-m01-prd-vstswinagents-0" },
-                new AgentPoolInformation() { PoolName = "Rabo-Build-Azure-Windows-Canary", ResourceGroupPrefix = "rg-m01-prd-vstswincanary-0" },
-                new AgentPoolInformation() { PoolName = "Rabo-Build-Azure-Windows-Fallback", ResourceGroupPrefix = "rg-m01-prd-vstswinfallback-0" },
-                new AgentPoolInformation() { PoolName = "Rabo-Build-Azure-Windows-Preview", ResourceGroupPrefix = "rg-m01-prd-vstswinpreview-0" }
+                new AgentPoolInformation() { PoolName = "Some-Build-Azure-Linux", ResourceGroupPrefix = "rg-m01-prd-linuxagents-0" },
+                new AgentPoolInformation() { PoolName = "Some-Build-Azure-Linux-Canary", ResourceGroupPrefix = "rg-m01-prd-linuxcanary-0" },
+                new AgentPoolInformation() { PoolName = "Some-Build-Azure-Linux-Fallback", ResourceGroupPrefix = "rg-m01-prd-linuxfallback-0" },
+                new AgentPoolInformation() { PoolName = "Some-Build-Azure-Linux-Preview", ResourceGroupPrefix = "rg-m01-prd-linuxpreview-0" },
+                new AgentPoolInformation() { PoolName = "Some-Build-Azure-Windows", ResourceGroupPrefix = "rg-m01-prd-winagents-0" },
+                new AgentPoolInformation() { PoolName = "Some-Build-Azure-Windows-Canary", ResourceGroupPrefix = "rg-m01-prd-wincanary-0" },
+                new AgentPoolInformation() { PoolName = "Some-Build-Azure-Windows-Fallback", ResourceGroupPrefix = "rg-m01-prd-winfallback-0" },
+                new AgentPoolInformation() { PoolName = "Some-Build-Azure-Windows-Preview", ResourceGroupPrefix = "rg-m01-prd-winpreview-0" }
             };
 
             var fixture = new Fixture();
-            fixture.Customize<Response.AgentStatus>(a => a.With(agent => agent.Name, "linux-agent-canary-1-84432-2296-000000-1"));
+            fixture.Customize<AgentStatus>(a => a.With(agent => agent.Name, "linux-agent-canary-1-84432-2296-000000-1"));
 
-            fixture.Customize<Response.AgentPoolInfo>(a => a.With(pool => pool.Name, "Rabo-Build-Azure-Linux-Canary"));
+            fixture.Customize<AgentPoolInfo>(a => a.With(pool => pool.Name, "Some-Build-Azure-Linux-Canary"));
 
-            var result = AgentPoolScanFunction.GetAgentInfoFromName(fixture.Create<Response.AgentStatus>(),
-                                                       fixture.Create<Response.AgentPoolInfo>(),
+            var result = AgentPoolScanFunction.GetAgentInfoFromName(fixture.Create<AgentStatus>(),
+                                                       fixture.Create<AgentPoolInfo>(),
                                                        observedPools);
             Assert.Equal(0, result.InstanceId);
-            Assert.Equal("rg-m01-prd-vstslinuxcanary-01", result.ResourceGroup);
+            Assert.Equal("rg-m01-prd-linuxcanary-01", result.ResourceGroup);
 
         }
 
@@ -133,10 +131,10 @@ namespace AgentStatusFunction.Tests
             //Assert
 
             //check if queried status
-            mockHttp.GetMatchCount(getRequest).ShouldBe(1);
+            mockHttp.GetMatchCount(getRequest).Should().Be(1);
 
             //check if reimage called
-            mockHttp.GetMatchCount(postRequest).ShouldBe(0);
+            mockHttp.GetMatchCount(postRequest).Should().Be(0);
         }
 
         [Fact]
@@ -167,10 +165,10 @@ namespace AgentStatusFunction.Tests
             //Assert
 
             //check if queried status
-            mockHttp.GetMatchCount(getRequest).ShouldBe(1);
+            mockHttp.GetMatchCount(getRequest).Should().Be(1);
 
             //check if reimage called
-            mockHttp.GetMatchCount(postRequest).ShouldBe(1);
+            mockHttp.GetMatchCount(postRequest).Should().Be(1);
         }
     }
 }

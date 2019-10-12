@@ -9,6 +9,8 @@ ProjectSection(SolutionItems) = preProject
 	.gitignore = .gitignore
 EndProjectSection
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgentClient", "AgentClient\AgentClient.csproj", "{D198ABCB-5B4D-49E0-9530-59B3033AE5F1}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -23,5 +25,9 @@ Global
 		{EB084DD6-015C-4970-B8A4-833E2A279A67}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{EB084DD6-015C-4970-B8A4-833E2A279A67}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{EB084DD6-015C-4970-B8A4-833E2A279A67}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D198ABCB-5B4D-49E0-9530-59B3033AE5F1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D198ABCB-5B4D-49E0-9530-59B3033AE5F1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D198ABCB-5B4D-49E0-9530-59B3033AE5F1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D198ABCB-5B4D-49E0-9530-59B3033AE5F1}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

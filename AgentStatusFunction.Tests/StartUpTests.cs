@@ -13,19 +13,7 @@ namespace AgentStatusFunction.Tests
         [Fact]
         public void TestDependencyInjectionResolve()
         {
-            var fixture = new Fixture();
-
-            Environment.SetEnvironmentVariable("organization", fixture.Create<string>());
-            Environment.SetEnvironmentVariable("vstsPat", fixture.Create<string>());
-            Environment.SetEnvironmentVariable("tenantId", fixture.Create<string>());
-            Environment.SetEnvironmentVariable("clientId", fixture.Create<string>());
-            Environment.SetEnvironmentVariable("clientSecret", fixture.Create<string>());
-            
-            Environment.SetEnvironmentVariable("logAnalyticsWorkspaceId", fixture.Create<string>());
-            Environment.SetEnvironmentVariable("logAnalyticsKey", fixture.Create<string>());
-            
             var startup = new Startup();
-
             var services = new ServiceCollection();
 
             var builder = new Mock<IWebJobsBuilder>();

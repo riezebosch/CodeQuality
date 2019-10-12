@@ -3,29 +3,26 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using AgentClient;
 using AgentStatusFunction.LogItems;
 using AgentStatusFunction.Model;
-using LogAnalytics.Client;
 using Microsoft.Azure.Services.AppAuthentication;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
-using SecurePipelineScan.VstsService;
-using SecurePipelineScan.VstsService.Response;
 using Unmockable;
-using Requests = SecurePipelineScan.VstsService.Requests;
 
 namespace AgentStatusFunction
 {
     public class AgentPoolScanFunction
     {
         private readonly ILogAnalyticsClient _logAnalyticsClient;
-        private readonly IVstsRestClient _client;
+        private readonly IRestClient _client;
         private readonly HttpClient _http;
         private readonly IUnmockable<AzureServiceTokenProvider> _tokenProvider;
 
         public AgentPoolScanFunction(ILogAnalyticsClient logAnalyticsClient,
-            IVstsRestClient client,
+            IRestClient client,
             HttpClient http,
             IUnmockable<AzureServiceTokenProvider> tokenProvider)
         {
@@ -45,24 +42,24 @@ namespace AgentStatusFunction
             log.LogInformation("Time trigger function to check Azure DevOps agent status");
             var observedPools = new[]
             {
-                new AgentPoolInformation {PoolName = "Rabo-Build-Azure-Linux", ResourceGroupPrefix = "rg-m01-prd-vstslinuxagents-0"},
-                new AgentPoolInformation {PoolName = "Rabo-Build-Azure-Linux-Canary", ResourceGroupPrefix = "rg-m01-prd-vstslinuxcanary-0"},
-                new AgentPoolInformation {PoolName = "Rabo-Build-Azure-Linux-Fallback", ResourceGroupPrefix = "rg-m01-prd-vstslinuxfallback-0"},
-                new AgentPoolInformation {PoolName = "Rabo-Build-Azure-Linux-Preview", ResourceGroupPrefix = "rg-m01-prd-vstslinuxpreview-0"},
-                new AgentPoolInformation {PoolName = "Rabo-Build-Azure-Windows", ResourceGroupPrefix = "rg-m01-prd-vstswinagents-0"},
-                new AgentPoolInformation {PoolName = "Rabo-Build-Azure-Windows-Canary", ResourceGroupPrefix = "rg-m01-prd-vstswincanary-0"},
-                new AgentPoolInformation {PoolName = "Rabo-Build-Azure-Windows-Canary-2", ResourceGroupPrefix = "rg-m01-prd-vstswincanary-0"},
-                new AgentPoolInformation {PoolName = "Rabo-Build-Azure-Windows-Fallback", ResourceGroupPrefix = "rg-m01-prd-vstswinfallback-0"},
-                new AgentPoolInformation {PoolName = "Rabo-Build-Azure-Windows-Preview", ResourceGroupPrefix = "rg-m01-prd-vstswinpreview-0"},
+                new AgentPoolInformation {PoolName = "Some-Build-Azure-Linux", ResourceGroupPrefix = "rg-m01-prd-linuxagents-0"},
+                new AgentPoolInformation {PoolName = "Some-Build-Azure-Linux-Canary", ResourceGroupPrefix = "rg-m01-prd-linuxcanary-0"},
+                new AgentPoolInformation {PoolName = "Some-Build-Azure-Linux-Fallback", ResourceGroupPrefix = "rg-m01-prd-linuxfallback-0"},
+                new AgentPoolInformation {PoolName = "Some-Build-Azure-Linux-Preview", ResourceGroupPrefix = "rg-m01-prd-linuxpreview-0"},
+                new AgentPoolInformation {PoolName = "Some-Build-Azure-Windows", ResourceGroupPrefix = "rg-m01-prd-winagents-0"},
+                new AgentPoolInformation {PoolName = "Some-Build-Azure-Windows-Canary", ResourceGroupPrefix = "rg-m01-prd-wincanary-0"},
+                new AgentPoolInformation {PoolName = "Some-Build-Azure-Windows-Canary-2", ResourceGroupPrefix = "rg-m01-prd-wincanary-0"},
+                new AgentPoolInformation {PoolName = "Some-Build-Azure-Windows-Fallback", ResourceGroupPrefix = "rg-m01-prd-winfallback-0"},
+                new AgentPoolInformation {PoolName = "Some-Build-Azure-Windows-Preview", ResourceGroupPrefix = "rg-m01-prd-winpreview-0"},
             };
 
-            var orgPools = _client.Get(Requests.DistributedTask.OrganizationalAgentPools());
+            var orgPools = _client.Get(new EnumerableRequest<AgentPoolInfo>());
             var poolsToObserve = orgPools.Where(x => observedPools.Any(p => p.PoolName == x.Name));
             var list = new List<LogAnalyticsAgentStatus>();
 
             foreach (var pool in poolsToObserve)
             {
-                var agents = _client.Get(Requests.DistributedTask.AgentPoolStatus(pool.Id));
+                var agents = _client.Get(new EnumerableRequest<AgentStatus>(pool.Id)); 
                 foreach (var agent in agents)
                 {
                     var assignedTask = (agent.Status != "online") ? "Offline" : ((agent.AssignedRequest == null) ? "Idle" : agent.AssignedRequest.PlanType);
