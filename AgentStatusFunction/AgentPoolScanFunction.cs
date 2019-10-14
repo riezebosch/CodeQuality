@@ -1,10 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net.Http.Headers;
 using AgentClient;
+using AgentStatusFunction.Helpers;
 using AgentStatusFunction.LogItems;
-using AgentStatusFunction.Model;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Extensions.Logging;
 
@@ -14,12 +13,15 @@ namespace AgentStatusFunction
     {
         private readonly ILogAnalyticsClient _logAnalyticsClient;
         private readonly IRestClient _client;
+        private readonly IAgentPoolToVmScaleSetMapper _mapper;
 
         public AgentPoolScanFunction(ILogAnalyticsClient logAnalyticsClient,
-            IRestClient client)
+            IRestClient client,
+            IAgentPoolToVmScaleSetMapper mapper)
         {
             _logAnalyticsClient = logAnalyticsClient;
             _client = client;
+            _mapper = mapper;
         }
 
         [FunctionName(nameof(AgentPoolScanFunction))]
@@ -29,27 +31,14 @@ namespace AgentStatusFunction
         {
             if (log == null) throw new ArgumentNullException(nameof(log));
 
-            log.LogInformation("Time trigger function to check Azure DevOps agent status");
-            var observedPools = new[]
-            {
-                new AgentPoolInformation {PoolName = "Some-Build-Azure-Linux", ResourceGroupPrefix = "rg-m01-prd-linuxagents-0"},
-                new AgentPoolInformation {PoolName = "Some-Build-Azure-Linux-Canary", ResourceGroupPrefix = "rg-m01-prd-linuxcanary-0"},
-                new AgentPoolInformation {PoolName = "Some-Build-Azure-Linux-Fallback", ResourceGroupPrefix = "rg-m01-prd-linuxfallback-0"},
-                new AgentPoolInformation {PoolName = "Some-Build-Azure-Linux-Preview", ResourceGroupPrefix = "rg-m01-prd-linuxpreview-0"},
-                new AgentPoolInformation {PoolName = "Some-Build-Azure-Windows", ResourceGroupPrefix = "rg-m01-prd-winagents-0"},
-                new AgentPoolInformation {PoolName = "Some-Build-Azure-Windows-Canary", ResourceGroupPrefix = "rg-m01-prd-wincanary-0"},
-                new AgentPoolInformation {PoolName = "Some-Build-Azure-Windows-Canary-2", ResourceGroupPrefix = "rg-m01-prd-wincanary-0"},
-                new AgentPoolInformation {PoolName = "Some-Build-Azure-Windows-Fallback", ResourceGroupPrefix = "rg-m01-prd-winfallback-0"},
-                new AgentPoolInformation {PoolName = "Some-Build-Azure-Windows-Preview", ResourceGroupPrefix = "rg-m01-prd-winpreview-0"},
-            };
-
-            var orgPools = _client.Get(new EnumerableRequest<AgentPoolInfo>());
-            var poolsToObserve = orgPools.Where(x => observedPools.Any(p => p.PoolName == x.Name));
+            var pools = _client
+                .Get(new EnumerableRequest<AgentPoolInfo>())
+                .Where(x => _mapper.IsWellKnown(x.Name));
             var list = new List<LogAnalyticsAgentStatus>();
 
-            foreach (var pool in poolsToObserve)
+            foreach (var pool in pools)
             {
-                var agents = _client.Get(new EnumerableRequest<AgentStatus>(pool.Id)); 
+                var agents = _client.Get(new EnumerableRequest<AgentStatus>(pool.Id));
                 foreach (var agent in agents)
                 {
                     var assignedTask = (agent.Status != "online") ? "Offline" : ((agent.AssignedRequest == null) ? "Idle" : agent.AssignedRequest.PlanType);

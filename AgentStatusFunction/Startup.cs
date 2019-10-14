@@ -1,5 +1,6 @@
 ﻿using System.Net.Http;
 using AgentClient;
+using AgentStatusFunction.Helpers;
 using Microsoft.Azure.Services.AppAuthentication;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Hosting;
@@ -20,6 +21,7 @@ namespace AgentStatusFunction
             services.AddSingleton<IRestClient>(new RestClient());
             services.AddSingleton(new HttpClient());
             services.AddSingleton(new AzureServiceTokenProvider().Wrap());
+            services.AddSingleton<IAgentPoolToVmScaleSetMapper, AgentPoolToVmScaleSetMapper>();
         }
     }
 }

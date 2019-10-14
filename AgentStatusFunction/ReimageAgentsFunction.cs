@@ -1,9 +1,10 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Threading.Tasks;
 using AgentClient;
+using AgentStatusFunction.Helpers;
 using AgentStatusFunction.Model;
 using Microsoft.Azure.Services.AppAuthentication;
 using Microsoft.Azure.WebJobs;
@@ -13,94 +14,78 @@ using Unmockable;
 
 namespace AgentStatusFunction
 {
-    public class ReimageAgentsFunction
+    public class ReImageAgentsFunction
     {
         private readonly IRestClient _client;
         private readonly HttpClient _http;
         private readonly IUnmockable<AzureServiceTokenProvider> _tokenProvider;
+        private readonly IAgentPoolToVmScaleSetMapper _mapper;
 
-        public ReimageAgentsFunction(IRestClient client,
+        public ReImageAgentsFunction(IRestClient client,
+            IAgentPoolToVmScaleSetMapper mapper,
             HttpClient http,
             IUnmockable<AzureServiceTokenProvider> tokenProvider)
         {
             _client = client;
             _http = http;
             _tokenProvider = tokenProvider;
+            _mapper = mapper;
         }
 
-        [FunctionName(nameof(ReimageAgentsFunction))]
-        public async System.Threading.Tasks.Task Run(
+        [FunctionName(nameof(ReImageAgentsFunction))]
+        public async Task Run(
             [TimerTrigger("0 30 * * * *", RunOnStartup = true)] TimerInfo timerInfo,
             ILogger log)
         {
             if (log == null) throw new ArgumentNullException(nameof(log));
 
-            log.LogInformation("Time trigger function to check Azure DevOps agent status");
-            var observedPools = new[]
-            {
-                new AgentPoolInformation {PoolName = "Some-Build-Azure-Linux", ResourceGroupPrefix = "rg-m01-prd-linuxagents-0"},
-                new AgentPoolInformation {PoolName = "Some-Build-Azure-Linux-Canary", ResourceGroupPrefix = "rg-m01-prd-linuxcanary-0"},
-                new AgentPoolInformation {PoolName = "Some-Build-Azure-Linux-Fallback", ResourceGroupPrefix = "rg-m01-prd-linuxfallback-0"},
-                new AgentPoolInformation {PoolName = "Some-Build-Azure-Linux-Preview", ResourceGroupPrefix = "rg-m01-prd-linuxpreview-0"},
-                new AgentPoolInformation {PoolName = "Some-Build-Azure-Windows", ResourceGroupPrefix = "rg-m01-prd-winagents-0"},
-                new AgentPoolInformation {PoolName = "Some-Build-Azure-Windows-Canary", ResourceGroupPrefix = "rg-m01-prd-wincanary-0"},
-                new AgentPoolInformation {PoolName = "Some-Build-Azure-Windows-Canary-2", ResourceGroupPrefix = "rg-m01-prd-wincanary-0"},
-                new AgentPoolInformation {PoolName = "Some-Build-Azure-Windows-Fallback", ResourceGroupPrefix = "rg-m01-prd-winfallback-0"},
-                new AgentPoolInformation {PoolName = "Some-Build-Azure-Windows-Preview", ResourceGroupPrefix = "rg-m01-prd-winpreview-0"},
-            };
-
             var pools = _client
                 .Get(new EnumerableRequest<AgentPoolInfo>())
-                .Where(x => observedPools.Any(p => p.PoolName == x.Name));
+                .Where(x => _mapper.IsWellKnown(x.Name));
             
             foreach (var pool in pools)
             {
                 var agents = _client.Get(new EnumerableRequest<AgentStatus>(pool.Id));
-                foreach (var agent in agents)
+                foreach (var agent in agents.Where(x => x.Status != "online"))
                 {
-                    if (agent.Status != "online")
-                    {
-                        var agentInfo = GetAgentInfoFromName(agent, pool, observedPools);
-                        await ReImageAgent(log, agentInfo, _http, _tokenProvider);
-                    }
+                    var agentInfo = _mapper.ParseVirtualMachineInformation(pool.Name, agent.Name);
+                    await ReImageAgent(agentInfo, _tokenProvider, _http, log);
                 }
             }
         }
 
-        public static async System.Threading.Tasks.Task ReImageAgent(ILogger log, AgentInformation agentInfo, HttpClient client, IUnmockable<AzureServiceTokenProvider> tokenProvider)
+        public static async Task ReImageAgent(VirtualMachineInformation info,
+            IUnmockable<AzureServiceTokenProvider> tokenProvider, HttpClient client, ILogger log)
         {
-            var accessToken = await tokenProvider.Execute(x => x.GetAccessTokenAsync("https://management.azure.com/", null)).ConfigureAwait(false);
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-
-            var agentStatusJson = await client.GetStringAsync($"https://management.azure.com/subscriptions/f13f81f8-7578-4ca8-83f3-0a845fad3cb5/resourceGroups/{agentInfo.ResourceGroup}/providers/Microsoft.Compute/virtualMachineScaleSets/agents/virtualmachines/{agentInfo.InstanceId}/instanceView?api-version=2018-06-01");
-            dynamic status = JObject.Parse(agentStatusJson);
-
-            if (status.statuses[0].code == "ProvisioningState/updating")
+            await PrepareAuthorization(client, tokenProvider);
+            if (await IsReImaging(client, info))
             {
-                log.LogInformation($"Agent already being re-imaged: {agentInfo.ResourceGroup} - {agentInfo.InstanceId}");
+                log.LogInformation($"Agent already being re-imaged: {info.ResourceGroup} - {info.InstanceId}");
                 return;
             }
 
-            log.LogInformation($"Re-image agent: {agentInfo.ResourceGroup} - {agentInfo.InstanceId}");
-            var result = await client.PostAsync($"https://management.azure.com/subscriptions/f13f81f8-7578-4ca8-83f3-0a845fad3cb5/resourceGroups/{agentInfo.ResourceGroup}/providers/Microsoft.Compute/virtualMachineScaleSets/agents/virtualmachines/{agentInfo.InstanceId}/reimage?api-version=2018-06-01", new StringContent(""));
+            log.LogInformation($"Re-image agent: {info.ResourceGroup} - {info.InstanceId}");
+            var result = await client.PostAsync($"https://management.azure.com/subscriptions/{info.Subscription}/resourceGroups/{info.ResourceGroup}/providers/Microsoft.Compute/virtualMachineScaleSets/{info.ScaleSet}/virtualmachines/{info.InstanceId}/reimage?api-version=2018-06-01", new StringContent(""));
+            
             if (!result.IsSuccessStatusCode)
             {
-                throw new Exception($"Error Re-imaging agent: {agentInfo.ResourceGroup} - {agentInfo.InstanceId}");
+                throw new Exception($"Error re-imaging agent: {info.ResourceGroup} - {info.InstanceId}");
             }
         }
 
-        public static AgentInformation GetAgentInfoFromName(AgentStatus agent, AgentPoolInfo pool, IEnumerable<AgentPoolInformation> observedPools)
+        private static async Task PrepareAuthorization(HttpClient client,
+            IUnmockable<AzureServiceTokenProvider> tokenProvider)
         {
-            //re-image agent
-            var rgPrefix = observedPools.FirstOrDefault(op => op.PoolName == pool.Name);
-            var spit = agent.Name.Split('-');
+            var token = await tokenProvider.Execute(x => x.GetAccessTokenAsync("https://management.azure.com/", null)).ConfigureAwait(false);
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        }
 
-            if (rgPrefix == null || spit.Length != 8)
-            {
-                throw new Exception($"Agent with illegal name detected. cannot re-image: {agent.Name}");
-            }
-
-            return new AgentInformation($"{rgPrefix.ResourceGroupPrefix}{spit[3]}", int.Parse(spit[6]));
+        private static async Task<dynamic> IsReImaging(HttpClient client, VirtualMachineInformation info)
+        {
+            var response = await client.GetStringAsync($"https://management.azure.com/subscriptions/{info.Subscription}/resourceGroups/{info.ResourceGroup}/providers/Microsoft.Compute/virtualMachineScaleSets/{info.ScaleSet}/virtualmachines/{info.InstanceId}/instanceView?api-version=2018-06-01");
+            var status = (dynamic) JObject.Parse(response);
+            
+            return status.statuses[0].code == "ProvisioningState/updating";
         }
     }
 }
